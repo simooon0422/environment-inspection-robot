@@ -1,21 +1,30 @@
 #include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
+#include <semphr.h>
 #include <SoftwareSerial.h>
+#include "DHT.h"
 
 #define trigPin 4
 #define echoPin 5
+#define DHT11_PIN 6
 
-void TaskGetObstacleDistance(void *pvParameters);
-void TaskGetBluetoothCommand(void *pvParameters);
+void TaskHCSR4(void *pvParameters);
+void TaskXM15(void *pvParameters);
+void TaskDHT11(void *pvParameters);
+
+SemaphoreHandle_t xSemaphore;
+SoftwareSerial BTSerial(2, 3); // RX, TX
+DHT dht;
 
 int getDistance();
 
-volatile byte hcsr04_sampling = 20;
+volatile byte hcsr04_sampling = 20; // frequency of detection in Hz
 volatile int obstacleDistance;
+volatile int temperature;
+volatile int humidity;
+volatile int minPeriod = dht.getMinimumSamplingPeriod();
 
 String command = "";
-
-SoftwareSerial BTSerial(2, 3); // RX, TX
 
 void setup()
 {
@@ -23,41 +32,84 @@ void setup()
   BTSerial.begin(9600);
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
+  dht.setup(DHT11_PIN);
+
+  if (xSemaphore == NULL)
+  {
+    xSemaphore = xSemaphoreCreateMutex();
+    if ((xSemaphore) != NULL)
+      xSemaphoreGive((xSemaphore));
+  }
 
   xTaskCreate(
-      TaskGetObstacleDistance, "GetObstacleDistance", 128, NULL, 2, NULL);
+      TaskHCSR4, "GetObstacleDistance", 128, NULL, 2, NULL);
 
   xTaskCreate(
-      TaskGetBluetoothCommand, "GetBluetoothCommand", 128, NULL, 2, NULL);
+      TaskXM15, "GetBluetoothCommand", 128, NULL, 2, NULL);
+
+  xTaskCreate(
+      TaskDHT11, "GetTemperatureHumidity", 128, NULL, 2, NULL);
 }
 
 void loop()
 {
 }
 
-void TaskGetObstacleDistance(void *pvParameters)
+void TaskHCSR4(void *pvParameters)
 {
   (void)pvParameters;
 
   for (;;)
   {
-    obstacleDistance = getDistance();
-    // Serial.print(obstacleDistance); //debug only
-    // Serial.println(" cm"); //debug only
-    vTaskDelay(((1 / hcsr04_sampling) * 1000) / portTICK_PERIOD_MS);
+    if (xSemaphoreTake(xSemaphore, (TickType_t)5) == pdTRUE)
+    {
+      obstacleDistance = getDistance();
+      // Serial.print(obstacleDistance); //debug only
+      // Serial.println(" cm"); //debug only
+      xSemaphoreGive(xSemaphore);
+      vTaskDelay(((1 / hcsr04_sampling) * 1000) / portTICK_PERIOD_MS);
+    }
   }
 }
 
-void TaskGetBluetoothCommand(void *pvParameters)
+void TaskXM15(void *pvParameters)
 {
   (void)pvParameters;
 
   for (;;)
   {
-    if (BTSerial.available())
+    if (xSemaphoreTake(xSemaphore, (TickType_t)5) == pdTRUE)
     {
-      command = BTSerial.readStringUntil('\n');
-      Serial.println(command); //debug only
+      if (BTSerial.available())
+      {
+        command = BTSerial.readStringUntil('\n');
+        // Serial.println(command); // debug only
+      }
+      xSemaphoreGive(xSemaphore);
+    }
+  }
+}
+
+void TaskDHT11(void *pvParameters)
+{
+  (void)pvParameters;
+
+  for (;;)
+  {
+    if (xSemaphoreTake(xSemaphore, (TickType_t)5) == pdTRUE)
+    {
+      humidity = dht.getHumidity();
+      temperature = dht.getTemperature();
+
+      if (dht.getStatusString() == "OK") // debug only
+      {                                  //
+        Serial.print(humidity);          //
+        Serial.print("%RH | ");          //
+        Serial.print(temperature);       //
+        Serial.println("*C");            //
+      }                                  //
+      xSemaphoreGive(xSemaphore);
+      vTaskDelay(minPeriod / portTICK_PERIOD_MS);
     }
   }
 }
