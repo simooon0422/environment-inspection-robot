@@ -14,12 +14,12 @@
 // Right motor
 #define M1PWM 9
 #define M1DIR 7
-#define rightSpeed 75
+#define rightSpeed 100
 
 // Left Motor
 #define M2PWM 10
 #define M2DIR 8
-#define leftSpeed 75
+#define leftSpeed 100
 
 // Tasks for robot's modules
 void TaskHCSR4(void *pvParameters);
@@ -43,7 +43,7 @@ void stopMotors();
 int getDistance();
 
 // Variables for sensors
-volatile byte hcsr04_sampling = 10; // frequency of detection in Hz
+volatile byte hcsr04_sampling = 5; // frequency of detection in Hz
 volatile int obstacleDistance = 0;
 volatile int temperature = 0;
 volatile int humidity = 0;
@@ -57,8 +57,14 @@ void setup()
   // Initialize communication and configure pins
   Serial.begin(9600);
   BTSerial.begin(9600);
+
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
+  pinMode(M1PWM, OUTPUT);
+  pinMode(M1DIR, OUTPUT);
+  pinMode(M2PWM, OUTPUT);
+  pinMode(M2DIR, OUTPUT);
+
   dht.setup(DHT11_PIN);
 
   if (xSemaphore == NULL)
@@ -76,6 +82,9 @@ void setup()
 
   xTaskCreate(
       TaskDHT11, "GetTemperatureHumidity", 128, NULL, 2, NULL);
+
+  xTaskCreate(
+      TaskMotors, "ControlMotors", 128, NULL, 2, NULL);
 }
 
 void loop()
@@ -91,8 +100,8 @@ void TaskHCSR4(void *pvParameters)
     if (xSemaphoreTake(xSemaphore, (TickType_t)5) == pdTRUE)
     {
       obstacleDistance = getDistance();
-      Serial.print(obstacleDistance); //debug only
-      Serial.println(" cm"); //debug only
+      // Serial.print(obstacleDistance); // debug only
+      // Serial.println(" cm");          // debug only
       xSemaphoreGive(xSemaphore);
       vTaskDelay(((1 / hcsr04_sampling) * 1000) / portTICK_PERIOD_MS);
     }
@@ -110,7 +119,18 @@ void TaskXM15(void *pvParameters)
       if (BTSerial.available())
       {
         command = BTSerial.readStringUntil('\n');
+        command.trim();
         Serial.println(command); // debug only
+
+        if (command == "data")
+        {
+          BTSerial.print("Distance: ");
+          BTSerial.println(obstacleDistance);
+          BTSerial.print("Humidity: ");
+          BTSerial.println(humidity);
+          BTSerial.print("Temperature: ");
+          BTSerial.println(temperature);
+        }
       }
       xSemaphoreGive(xSemaphore);
     }
@@ -128,13 +148,13 @@ void TaskDHT11(void *pvParameters)
       humidity = dht.getHumidity();
       temperature = dht.getTemperature();
 
-      if (dht.getStatusString() == "OK") // debug only
-      {                                  //
-        Serial.print(humidity);          //
-        Serial.print("%RH | ");          //
-        Serial.print(temperature);       //
-        Serial.println("*C");            //
-      }                                  //
+      // if (dht.getStatusString() == "OK") // debug only
+      // {                                  //
+      //   Serial.print(humidity);          //
+      //   Serial.print("%RH | ");          //
+      //   Serial.print(temperature);       //
+      //   Serial.println("*C");            //
+      // } //
       xSemaphoreGive(xSemaphore);
       vTaskDelay(minPeriod / portTICK_PERIOD_MS);
     }
@@ -143,7 +163,44 @@ void TaskDHT11(void *pvParameters)
 
 void TaskMotors(void *pvParameters)
 {
+  (void)pvParameters;
 
+  for (;;)
+  {
+    if (xSemaphoreTake(xSemaphore, (TickType_t)5) == pdTRUE)
+    {
+      if (command != previousCommand)
+      {
+        // Serial.println(command); // debug only
+        if (command == "forward")
+        {
+          stopMotors();
+          goForward();
+        }
+        else if (command == "backward")
+        {
+          stopMotors();
+          goBackward();
+        }
+        else if (command == "right")
+        {
+          stopMotors();
+          turnRight();
+        }
+        else if (command == "left")
+        {
+          stopMotors();
+          turnLeft();
+        }
+        else if (command == "stop")
+        {
+          stopMotors();
+        }
+      }
+      previousCommand = command;
+      xSemaphoreGive(xSemaphore);
+    }
+  }
 }
 
 void goForward()
@@ -164,18 +221,18 @@ void goBackward()
 
 void turnRight()
 {
-  digitalWrite(M1DIR, LOW);
-  digitalWrite(M2DIR, HIGH);
-  analogWrite(M1PWM, rightSpeed);
-  analogWrite(M2PWM, leftSpeed);
+  digitalWrite(M1DIR, HIGH);
+  digitalWrite(M2DIR, LOW);
+  analogWrite(M1PWM, leftSpeed / 2);
+  analogWrite(M2PWM, rightSpeed / 2);
 }
 
 void turnLeft()
 {
-  digitalWrite(M1DIR, HIGH);
-  digitalWrite(M2DIR, LOW);
-  analogWrite(M1PWM, rightSpeed);
-  analogWrite(M2PWM, leftSpeed);
+  digitalWrite(M1DIR, LOW);
+  digitalWrite(M2DIR, HIGH);
+  analogWrite(M1PWM, leftSpeed / 2);
+  analogWrite(M2PWM, rightSpeed / 2);
 }
 
 void stopMotors()
