@@ -14,12 +14,14 @@
 // Right motor
 #define M1PWM 9
 #define M1DIR 7
-#define rightSpeed 100
 
 // Left Motor
 #define M2PWM 10
 #define M2DIR 8
-#define leftSpeed 100
+
+// Motors speed
+#define speed 150
+#define turnSpeed 100
 
 // Tasks for robot's modules
 void TaskHCSR4(void *pvParameters);
@@ -207,32 +209,32 @@ void goForward()
 {
   digitalWrite(M1DIR, HIGH);
   digitalWrite(M2DIR, HIGH);
-  analogWrite(M1PWM, rightSpeed);
-  analogWrite(M2PWM, leftSpeed);
+  analogWrite(M1PWM, speed);
+  analogWrite(M2PWM, speed);
 }
 
 void goBackward()
 {
   digitalWrite(M1DIR, LOW);
   digitalWrite(M2DIR, LOW);
-  analogWrite(M1PWM, rightSpeed);
-  analogWrite(M2PWM, leftSpeed);
+  analogWrite(M1PWM, speed);
+  analogWrite(M2PWM, speed);
 }
 
 void turnRight()
 {
   digitalWrite(M1DIR, HIGH);
   digitalWrite(M2DIR, LOW);
-  analogWrite(M1PWM, leftSpeed / 2);
-  analogWrite(M2PWM, rightSpeed / 2);
+  analogWrite(M1PWM, turnSpeed);
+  analogWrite(M2PWM, turnSpeed);
 }
 
 void turnLeft()
 {
   digitalWrite(M1DIR, LOW);
   digitalWrite(M2DIR, HIGH);
-  analogWrite(M1PWM, leftSpeed / 2);
-  analogWrite(M2PWM, rightSpeed / 2);
+  analogWrite(M1PWM, turnSpeed);
+  analogWrite(M2PWM, turnSpeed);
 }
 
 void stopMotors()
